@@ -51,6 +51,20 @@ describe("buildEmbeddedRunPayloads", () => {
     expect(payloads.some((payload) => payload.text === errorJson)).toBe(false);
   });
 
+  it("suppresses the trailing error when the assistant already produced a real reply", () => {
+    const payloads = buildPayloads({
+      assistantTexts: ["Latest is still the March 9 email."],
+      lastAssistant: makeAssistant({
+        errorMessage:
+          '{"type":"error","error":{"type":"server_error","message":"An error occurred while processing your request."},"sequence_number":2}',
+      }),
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.isError).toBeUndefined();
+    expect(payloads[0]?.text).toBe("Latest is still the March 9 email.");
+  });
+
   it("suppresses pretty-printed error JSON that differs from the errorMessage", () => {
     const payloads = buildPayloads({
       assistantTexts: [errorJsonPretty],

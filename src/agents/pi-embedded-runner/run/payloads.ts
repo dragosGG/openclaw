@@ -152,9 +152,6 @@ export function buildEmbeddedRunPayloads(params: {
   const normalizedErrorText = errorText ? normalizeTextForComparison(errorText) : null;
   const normalizedGenericBillingErrorText = normalizeTextForComparison(BILLING_ERROR_USER_MESSAGE);
   const genericErrorText = "The AI service returned an error. Please try again.";
-  if (errorText) {
-    replyItems.push({ text: errorText, isError: true });
-  }
 
   const inlineToolResults =
     params.inlineToolResultsAllowed && params.verboseLevel !== "off" && params.toolMetas.length > 0;
@@ -250,6 +247,18 @@ export function buildEmbeddedRunPayloads(params: {
         ? [fallbackAnswerText]
         : []
   ).filter((text) => !shouldSuppressRawErrorText(text));
+  const hasAssistantReplyCandidate = answerTexts.some((text) => {
+    const {
+      text: cleanedText,
+      mediaUrls,
+      audioAsVoice,
+    } = parseReplyDirectives(text);
+    return Boolean(cleanedText || (mediaUrls && mediaUrls.length > 0) || audioAsVoice);
+  });
+
+  if (errorText && !hasAssistantReplyCandidate) {
+    replyItems.push({ text: errorText, isError: true });
+  }
 
   let hasUserFacingAssistantReply = false;
   for (const text of answerTexts) {

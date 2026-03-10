@@ -1,4 +1,5 @@
 import type { ChannelId } from "../channels/plugins/types.js";
+import { isTruthyEnvValue } from "../infra/env.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { ChannelManager } from "./server-channels.js";
 
@@ -80,6 +81,13 @@ export function startChannelHealthMonitor(deps: ChannelHealthMonitorDeps): Chann
     checkInFlight = true;
 
     try {
+      if (
+        isTruthyEnvValue(process.env.OPENCLAW_SKIP_CHANNELS) ||
+        isTruthyEnvValue(process.env.OPENCLAW_SKIP_PROVIDERS)
+      ) {
+        return;
+      }
+
       const now = Date.now();
       if (now - startedAt < startupGraceMs) {
         return;

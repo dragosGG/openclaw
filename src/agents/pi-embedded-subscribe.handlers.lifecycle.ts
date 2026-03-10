@@ -1,6 +1,11 @@
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { createInlineCodeState } from "../markdown/code-spans.js";
-import { formatAssistantErrorText } from "./pi-embedded-helpers.js";
+import {
+  formatAssistantErrorText,
+  getApiErrorPayloadFingerprint,
+  isRawApiErrorPayload,
+  normalizeTextForComparison,
+} from "./pi-embedded-helpers.js";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 import { isAssistantMessage } from "./pi-embedded-utils.js";
 
@@ -37,25 +42,76 @@ export function handleAgentEnd(ctx: EmbeddedPiSubscribeContext) {
       model: lastAssistant.model,
     });
     const errorText = (friendlyError || lastAssistant.errorMessage || "LLM request failed.").trim();
+    const rawErrorMessage = lastAssistant.errorMessage?.trim() || "";
+    const normalizedErrorText = normalizeTextForComparison(errorText);
+    const normalizedRawErrorText = normalizeTextForComparison(rawErrorMessage);
+    const rawErrorFingerprint = rawErrorMessage
+      ? getApiErrorPayloadFingerprint(rawErrorMessage)
+      : null;
+    const hasUserFacingReply = ctx.state.assistantTexts.some((text) => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        return false;
+      }
+      const normalized = normalizeTextForComparison(trimmed);
+      if (normalized && normalizedErrorText && normalized === normalizedErrorText) {
+        return false;
+      }
+      if (normalized && normalizedRawErrorText && normalized === normalizedRawErrorText) {
+        return false;
+      }
+      if (trimmed === rawErrorMessage) {
+        return false;
+      }
+      if (isRawApiErrorPayload(trimmed)) {
+        return false;
+      }
+      if (rawErrorFingerprint) {
+        const fingerprint = getApiErrorPayloadFingerprint(trimmed);
+        if (fingerprint && fingerprint === rawErrorFingerprint) {
+          return false;
+        }
+      }
+      return true;
+    });
     ctx.log.warn(
       `embedded run agent end: runId=${ctx.params.runId} isError=true error=${errorText}`,
     );
-    emitAgentEvent({
-      runId: ctx.params.runId,
-      stream: "lifecycle",
-      data: {
-        phase: "error",
-        error: errorText,
-        endedAt: Date.now(),
-      },
-    });
-    void ctx.params.onAgentEvent?.({
-      stream: "lifecycle",
-      data: {
-        phase: "error",
-        error: errorText,
-      },
-    });
+    if (hasUserFacingReply) {
+      emitAgentEvent({
+        runId: ctx.params.runId,
+        stream: "lifecycle",
+        data: {
+          phase: "end",
+          endedAt: Date.now(),
+          suppressedError: errorText,
+        },
+      });
+      void ctx.params.onAgentEvent?.({
+        stream: "lifecycle",
+        data: {
+          phase: "end",
+          suppressedError: errorText,
+        },
+      });
+    } else {
+      emitAgentEvent({
+        runId: ctx.params.runId,
+        stream: "lifecycle",
+        data: {
+          phase: "error",
+          error: errorText,
+          endedAt: Date.now(),
+        },
+      });
+      void ctx.params.onAgentEvent?.({
+        stream: "lifecycle",
+        data: {
+          phase: "error",
+          error: errorText,
+        },
+      });
+    }
   } else {
     ctx.log.debug(`embedded run agent end: runId=${ctx.params.runId} isError=${isError}`);
     emitAgentEvent({

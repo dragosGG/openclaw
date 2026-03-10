@@ -49,6 +49,7 @@ describe("handleAgentEnd", () => {
       },
       { onAgentEvent },
     );
+    ctx.state.assistantTexts = [];
 
     handleAgentEnd(ctx);
 
@@ -61,6 +62,31 @@ describe("handleAgentEnd", () => {
       data: {
         phase: "error",
         error: "connection refused",
+      },
+    });
+  });
+
+  it("downgrades lifecycle error to end when a user-facing reply already exists", () => {
+    const onAgentEvent = vi.fn();
+    const ctx = createContext(
+      {
+        role: "assistant",
+        stopReason: "error",
+        errorMessage:
+          '{"type":"error","error":{"type":"server_error","message":"An error occurred while processing your request."},"sequence_number":2}',
+        content: [{ type: "text", text: "" }],
+      },
+      { onAgentEvent },
+    );
+    ctx.state.assistantTexts = ["Latest is still the March 9 email."];
+
+    handleAgentEnd(ctx);
+
+    expect(onAgentEvent).toHaveBeenCalledWith({
+      stream: "lifecycle",
+      data: {
+        phase: "end",
+        suppressedError: "LLM error server_error: An error occurred while processing your request.",
       },
     });
   });

@@ -83,8 +83,12 @@ function managedStoppedAccount(lastError: string): Partial<ChannelAccountSnapsho
 describe("channel-health-monitor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    delete process.env.OPENCLAW_SKIP_CHANNELS;
+    delete process.env.OPENCLAW_SKIP_PROVIDERS;
   });
   afterEach(() => {
+    delete process.env.OPENCLAW_SKIP_CHANNELS;
+    delete process.env.OPENCLAW_SKIP_PROVIDERS;
     vi.useRealTimers();
   });
 
@@ -293,6 +297,19 @@ describe("channel-health-monitor", () => {
     abort.abort();
     await vi.advanceTimersByTimeAsync(5_001);
     expect(manager.getRuntimeSnapshot).not.toHaveBeenCalled();
+    monitor.stop();
+  });
+
+  it("skips health-monitor restarts when channels are disabled via env", async () => {
+    process.env.OPENCLAW_SKIP_CHANNELS = "1";
+    const manager = createSnapshotManager({
+      telegram: {
+        default: managedStoppedAccount("polling stopped unexpectedly"),
+      },
+    });
+    const monitor = await startAndRunCheck(manager);
+    expect(manager.getRuntimeSnapshot).not.toHaveBeenCalled();
+    expect(manager.startChannel).not.toHaveBeenCalled();
     monitor.stop();
   });
 
